@@ -145,7 +145,7 @@ if prompt := st.chat_input("Réponds ici..."):
                             response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                             seen_titles.append(base_title)
                 
-                response += "\n\nSouhaites-tu faire une autre recherche ?"
+                response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
             else:
                 response = f"Je n'ai pas trouvé '{title_in}'. Peux-tu m'en dire un peu plus ?"
