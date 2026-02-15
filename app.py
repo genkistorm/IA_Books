@@ -99,7 +99,7 @@ if prompt := st.chat_input("Réponds ici..."):
     with st.chat_message("assistant", avatar=AI_AVATAR):
         if st.session_state.step == "ASK_TITLE":
             st.session_state.temp_data["title"] = prompt
-            response = f"D'accord, **{prompt}**. Connais-tu son auteur ? (Sinon, réponds 'non' ou laisse un espace vide)"
+            response = f"D'accord, **{prompt}** j'en prends note. Connais-tu son auteur ? (Sinon, réponds 'non' ou laisse un espace vide)"
             st.session_state.step = "ASK_AUTHOR"
             
         elif st.session_state.step == "ASK_AUTHOR":
@@ -174,7 +174,7 @@ if prompt := st.chat_input("Réponds ici..."):
                         response += f"{found}. **{info['Book-Title']}** ({info['Book-Author']})\n"
                         seen_titles.append(base_title)
             
-            response += "\n\nOn continue ?"
+            response += "\n\nOn continue ? Donne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
             st.session_state.step = "ASK_TITLE"
 
         st.markdown(response)
