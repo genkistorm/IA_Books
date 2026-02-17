@@ -114,12 +114,13 @@ if prompt := st.chat_input("Réponds ici..."):
             except: count = 8
             st.session_state.temp_data["count"] = count
             
-            # Nouvelle question pour la diversité
-            response = "Voulez-vous **DIVERSIFIER** les auteurs ? (Répondez **o** pour oui ou **n** pour non)"
+            # Dialogue conservé tel quel
+            response = "Veux-tu **diversifier** les auteurs ?"
             st.session_state.step = "ASK_DIVERSITY"
 
         elif st.session_state.step == "ASK_DIVERSITY":
-            st.session_state.temp_data["diversify"] = (prompt.lower() == 'o')
+            # MODIFICATION ICI : On accepte o, oui et ouais
+            st.session_state.temp_data["diversify"] = prompt.lower() in ['o', 'oui', 'ouais']
             
             title_in = st.session_state.temp_data["title"]
             auth_in = st.session_state.temp_data["author"]
@@ -138,11 +139,10 @@ if prompt := st.chat_input("Réponds ici..."):
                 response = f"Analyse pour : {title_in.upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
                 
-                # Logic de filtrage
                 target_title = target_row['Book-Title'].lower()
                 def clean_auth(name): return "".join(filter(str.isalpha, str(name).lower()))
-                target_auth_clean = clean_auth(target_row['Book-Author'])
-                keywords = [w for w in target_title.replace("(", "").replace(")", "").split() if len(w) > 3]
+                t_auth_c = clean_auth(target_row['Book-Author'])
+                t_kw = [w for w in target_title.replace("(", "").replace(")", "").split() if len(w) > 3]
 
                 seen_titles = [target_title[:20]]
                 mots_interdits = ["audio", "cd", "cassette", "sound recording", "talking book"]
@@ -157,11 +157,11 @@ if prompt := st.chat_input("Réponds ici..."):
                     if not any(mot in titre_propre for mot in mots_interdits):
                         base_title_short = titre_propre[:20]
                         if base_title_short not in seen_titles:
-                            # Filtre Diversité
+                            # Filtre Diversité appliqué si div est True
                             if div:
-                                if clean_auth(res_author) in target_auth_clean or target_auth_clean in clean_auth(res_author):
+                                if clean_auth(res_author) in t_auth_c or t_auth_c in clean_auth(res_author):
                                     continue
-                                if any(k in titre_propre for k in keywords):
+                                if any(k in titre_propre for k in t_kw):
                                     continue
 
                             found += 1
