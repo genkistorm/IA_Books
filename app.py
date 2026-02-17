@@ -83,7 +83,7 @@ if "messages" not in st.session_state:
 if "step" not in st.session_state:
     st.session_state.step = "ASK_TITLE"
 if "temp_data" not in st.session_state:
-    st.session_state.temp_data = {"title": "", "author": "", "count": 8}
+    st.session_state.temp_data = {"title": "", "author": "", "count": 8, "diversify": False}
 
 for message in st.session_state.messages:
     avatar = AI_AVATAR if message["role"] == "assistant" else USER_AVATAR
@@ -112,10 +112,19 @@ if prompt := st.chat_input("Réponds ici..."):
                 count = int(''.join(filter(str.isdigit, prompt)))
                 count = max(1, min(10, count))
             except: count = 8
-            
             st.session_state.temp_data["count"] = count
+            
+            # Nouvelle question pour la diversité
+            response = "Voulez-vous **DIVERSIFIER** les auteurs ? (Répondez **o** pour oui ou **n** pour non)"
+            st.session_state.step = "ASK_DIVERSITY"
+
+        elif st.session_state.step == "ASK_DIVERSITY":
+            st.session_state.temp_data["diversify"] = (prompt.lower() == 'o')
+            
             title_in = st.session_state.temp_data["title"]
             auth_in = st.session_state.temp_data["author"]
+            count = st.session_state.temp_data["count"]
+            div = st.session_state.temp_data["diversify"]
 
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
             if auth_in:
@@ -124,12 +133,18 @@ if prompt := st.chat_input("Réponds ici..."):
             if not m.empty:
                 target_row = m.iloc[0]
                 idx_pos = target_row.name
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=50)
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=100)
                 
                 response = f"Analyse pour : {title_in.upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
                 
-                seen_titles = [target_row['Book-Title'].lower()]
+                # Logic de filtrage
+                target_title = target_row['Book-Title'].lower()
+                def clean_auth(name): return "".join(filter(str.isalpha, str(name).lower()))
+                target_auth_clean = clean_auth(target_row['Book-Author'])
+                keywords = [w for w in target_title.replace("(", "").replace(")", "").split() if len(w) > 3]
+
+                seen_titles = [target_title[:20]]
                 mots_interdits = ["audio", "cd", "cassette", "sound recording", "talking book"]
                 found = 0
                 
@@ -137,13 +152,21 @@ if prompt := st.chat_input("Réponds ici..."):
                     if found >= count: break
                     res = df.iloc[ind[0][i]]
                     titre_propre = res['Book-Title'].lower()
+                    res_author = str(res['Book-Author'])
                     
                     if not any(mot in titre_propre for mot in mots_interdits):
-                        base_title = titre_propre.split('(')[0].strip()
-                        if base_title not in seen_titles:
+                        base_title_short = titre_propre[:20]
+                        if base_title_short not in seen_titles:
+                            # Filtre Diversité
+                            if div:
+                                if clean_auth(res_author) in target_auth_clean or target_auth_clean in clean_auth(res_author):
+                                    continue
+                                if any(k in titre_propre for k in keywords):
+                                    continue
+
                             found += 1
                             response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
-                            seen_titles.append(base_title)
+                            seen_titles.append(base_title_short)
                 
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
@@ -159,7 +182,7 @@ if prompt := st.chat_input("Réponds ici..."):
             top_indices = np.argsort(scores)[::-1]
             
             response = f"Analyse pour : {user_title.upper()} ---\n\n"
-            seen_titles = [user_title.lower()]
+            seen_titles = [user_title.lower()[:20]]
             mots_interdits = ["audio", "cd", "cassette", "sound recording", "talking book"]
             found = 0
             for idx in top_indices:
@@ -168,11 +191,11 @@ if prompt := st.chat_input("Réponds ici..."):
                 titre_propre = info['Book-Title'].lower()
                 
                 if not any(mot in titre_propre for mot in mots_interdits):
-                    base_title = titre_propre.split('(')[0].strip()
-                    if base_title not in seen_titles:
+                    base_title_short = titre_propre[:20]
+                    if base_title_short not in seen_titles:
                         found += 1
                         response += f"{found}. **{info['Book-Title']}** ({info['Book-Author']})\n"
-                        seen_titles.append(base_title)
+                        seen_titles.append(base_title_short)
             
             response += "\n\nOn continue ? Donne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
             st.session_state.step = "ASK_TITLE"
