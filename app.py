@@ -30,7 +30,7 @@ USER_ICON = os.path.join(dossier_actuel, "user_icon.png")
 AI_AVATAR = AI_ICON if os.path.exists(AI_ICON) else "🤖"
 USER_AVATAR = USER_ICON if os.path.exists(USER_ICON) else "👤"
 
-# --- 3. CHARGEMENT DES RESSOURCES (OPTIMISÉ RAM & INDEX) ---
+# --- 3. CHARGEMENT DES RESSOURCES (SYNCHRONISATION ET RAM) ---
 @st.cache_resource
 def load_resources():
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
@@ -109,19 +109,19 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
-            # --- FIX DE PERTINENCE : On cherche le titre le plus court pour éviter les "guides" ---
-            m = df[df['Book-Title'].str.contains(rf"\b{title_in}\b", case=False, na=False, regex=True)].copy()
-            if m.empty: m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
-            if auth_in: m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
+            # FIX DE PERTINENCE : On trie par longueur de titre pour éviter "WE LOVE HARRY POTTER!"
+            m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
+            if auth_in:
+                m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
 
             if not m.empty:
-                # Tri par longueur de titre pour prendre l'œuvre originale (ex: "Harry Potter" vs "The Harry Potter Guide")
+                # Priorité au titre le plus court (souvent l'oeuvre originale)
                 m['len'] = m['Book-Title'].str.len()
                 target_row = m.sort_values('len').iloc[0]
                 idx_pos = target_row.name 
                 
-                # Scan profond (500 voisins) pour ne pas rater les suites
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(500, len(df)))
+                # Scan très large (1000 voisins) pour débusquer Rowling
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
                 response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
@@ -142,19 +142,21 @@ if prompt := st.chat_input("Réponds ici..."):
                     
                     if res_title[:20] in seen_titles: continue
 
+                    # --- LOGIQUE DE FILTRAGE RIGOUREUSE ---
                     if div:
-                        # DIVERSIFIER : On dégage le même auteur
+                        # On exclut le même auteur
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        # NE PAS DIVERSIFIER : On reste sur l'auteur, mais on laisse le KNN
-                        # s'élargir si l'auteur n'a plus rien à proposer (évite les listes vides)
-                        if i < 300 and (res_auth_c not in t_auth_c and t_auth_c not in res_auth_c):
-                            continue
+                        # On n'accepte QUE le même auteur (Verrou strict)
+                        if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(res_title[:20])
+                
+                if found == 0:
+                    response += "(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)"
                 
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
@@ -165,13 +167,7 @@ if prompt := st.chat_input("Réponds ici..."):
         elif st.session_state.step == "ASK_SUMMARY":
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
-            
-            # Détection sémantique du genre pour la qualité
-            cats = {"Fantasy": "magic wizards", "Sci-Fi": "space robots", "Thriller": "crime murder", "History": "past war"}
-            ref_labels, ref_embs = list(cats.keys()), st_model.encode(list(cats.values()))
-            best_g = ref_labels[np.argmax(cosine_similarity(st_model.encode([prompt]), ref_embs)[0])]
-
-            nouveau_feat = f"{best_g} {best_g} | {user_title} | {prompt}"
+            nouveau_feat = f"Fantasy Fantasy | {user_title} | {prompt}"
             nouveau_emb = st_model.encode([nouveau_feat])
             scores = cosine_similarity(nouveau_emb, embs)[0]
             top_indices = np.argsort(scores)[::-1]
