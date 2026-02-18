@@ -6,7 +6,7 @@ from scipy.sparse import load_npz
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# --- 1. CONFIGURATION ET STYLE CSS (Strictement identique) ---
+# --- 1. CONFIGURATION ET STYLE CSS ---
 st.set_page_config(page_title="Stormy AI", page_icon="⚡", layout="centered")
 
 st.markdown("""
@@ -23,68 +23,51 @@ st.markdown("""
 
 st.markdown('<div class="stormy-container"><div class="stormy-text">Stormy</div></div>', unsafe_allow_html=True)
 
-# --- 2. GESTION SÉCURISÉE DES AVATARS ---
+# --- 2. GESTION DES AVATARS ---
 dossier_actuel = os.path.dirname(os.path.abspath(__file__))
 AI_ICON = os.path.join(dossier_actuel, "stormy_icon.png")
 USER_ICON = os.path.join(dossier_actuel, "user_icon.png")
 AI_AVATAR = AI_ICON if os.path.exists(AI_ICON) else "🤖"
 USER_AVATAR = USER_ICON if os.path.exists(USER_ICON) else "👤"
 
-# --- 3. CHARGEMENT DES RESSOURCES (RECOLLAGE TECHNIQUE) ---
+# --- 3. CHARGEMENT DES RESSOURCES (SYNCHRONISATION TOTALE) ---
 @st.cache_resource
 def load_resources():
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
     
-    # CHARGEMENT ET SYNCHRONISATION CRITIQUE DES INDEX
+    # CHARGEMENT DU CATALOGUE
     df = pd.read_csv(os.path.join(dossier_actuel, "data_checkpoint.csv"), encoding='utf-8-sig')
-    df = df.reset_index(drop=True) # Force l'index à 0, 1, 2... pour correspondre à la matrice
+    # CRUCIAL : On force l'index pour qu'il corresponde à la position dans la matrice
+    df = df.reset_index(drop=True)
     
     import io
 
-    # Recollage KNN
-    knn_data = io.BytesIO()
-    for i in range(1, 11):
-        p = os.path.join(dossier_actuel, f"moteur_knn_part{i}.pkl")
-        if os.path.exists(p):
-            with open(p, 'rb') as f: knn_data.write(f.read())
-    knn_data.seek(0)
-    knn = joblib.load(knn_data)
+    # RECOLLAGE DES MORCEAUX (KNN, MEMORY, MATRICE)
+    def glue_parts(prefix, parts_count, extension):
+        data = io.BytesIO()
+        for i in range(1, parts_count + 1):
+            p = os.path.join(dossier_actuel, f"{prefix}_part{i}.{extension}")
+            if os.path.exists(p):
+                with open(p, 'rb') as f: data.write(f.read())
+        data.seek(0)
+        return data
 
-    # Recollage Memory
-    embs_data = io.BytesIO()
-    for i in range(1, 5):
-        p = os.path.join(dossier_actuel, f"ia_memory_part{i}.npy")
-        if os.path.exists(p):
-            with open(p, 'rb') as f: embs_data.write(f.read())
-    embs_data.seek(0)
-    embs = np.load(embs_data)
+    knn = joblib.load(glue_parts("moteur_knn", 10, "pkl"))
+    embs = np.load(glue_parts("ia_memory", 5, "npy"))
+    h_mat = load_npz(glue_parts("matrice_hybride", 5, "npz"))
 
-    # Recollage Matrice
-    h_mat_data = io.BytesIO()
-    for i in range(1, 5):
-        p = os.path.join(dossier_actuel, f"matrice_hybride_part{i}.npz")
-        if os.path.exists(p):
-            with open(p, 'rb') as f: h_mat_data.write(f.read())
-    h_mat_data.seek(0)
-    h_mat = load_npz(h_mat_data)
-
-    def fix_encoding(text):
-        if not isinstance(text, str): return str(text)
-        try: return text.encode('cp1252').decode('utf-8').strip()
-        except: return text.strip()
-    
-    df['Book-Title'] = df['Book-Title'].apply(fix_encoding)
-    df['Book-Author'] = df['Book-Author'].apply(fix_encoding)
+    # Nettoyage
+    df['Book-Title'] = df['Book-Title'].astype(str).str.strip()
+    df['Book-Author'] = df['Book-Author'].astype(str).str.strip()
 
     return df, h_mat, knn, st_model, embs
 
-# --- L'APPEL QUI DÉFINIT 'df' GLOBALEMENT ---
 with st.spinner('Chargement de Stormy...'):
     df, h_mat, knn, st_model, embs = load_resources()
 
-# --- 4. INITIALISATION DU CHAT (Tes textes originaux) ---
+# --- 4. INITIALISATION DU CHAT ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Salut ! Je suis **Stormy**. Je suis capable de te recommander des livres en fonction de tes goûts ! Pour commencer, dis-moi quel est ton livre préféré (ou un livre que tu as aimé récemment) (**de préférence en anglais**)."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Salut ! Je suis **Stormy**. Je peux te recommander des livres ! Dis-moi ce que tu aimes."}]
 if "step" not in st.session_state:
     st.session_state.step = "ASK_TITLE"
 if "temp_data" not in st.session_state:
@@ -104,12 +87,12 @@ if prompt := st.chat_input("Réponds ici..."):
     with st.chat_message("assistant", avatar=AI_AVATAR):
         if st.session_state.step == "ASK_TITLE":
             st.session_state.temp_data["title"] = prompt
-            response = f"D'accord, **{prompt}** j'en prends note. Connais-tu son auteur ? (Sinon, réponds 'non' ou laisse un espace vide)"
+            response = f"D'accord, **{prompt}**. Connais-tu l'auteur ? (Sinon, réponds 'non')"
             st.session_state.step = "ASK_AUTHOR"
             
         elif st.session_state.step == "ASK_AUTHOR":
             st.session_state.temp_data["author"] = "" if prompt.lower() in ["non", "nan", ""] else prompt
-            response = "Combien de livres souhaites-tu te voir recommander ? (1 à 10)"
+            response = "Combien de livres veux-tu ? (1 à 10)"
             st.session_state.step = "ASK_COUNT"
 
         elif st.session_state.step == "ASK_COUNT":
@@ -122,97 +105,81 @@ if prompt := st.chat_input("Réponds ici..."):
             st.session_state.step = "ASK_DIVERSITY"
 
         elif st.session_state.step == "ASK_DIVERSITY":
-            st.session_state.temp_data["diversify"] = prompt.lower() in ['o', 'oui', 'ouais']
-            
+            div = prompt.lower() in ['o', 'oui', 'ouais']
             title_in = st.session_state.temp_data["title"]
             auth_in = st.session_state.temp_data["author"]
             count = st.session_state.temp_data["count"]
-            div = st.session_state.temp_data["diversify"]
 
-            # RECHERCHE DE L'INDEX RÉEL DANS LE DF
+            # RECHERCHE EXACTEMENT COMME DANS TON CLI
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
             if auth_in:
                 m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
 
             if not m.empty:
                 target_row = m.iloc[0]
-                idx_pos = m.index[0] # ON UTILISE L'INDEX DU DF POUR LA MATRICE
+                idx_pos = m.index[0] # L'index positionnel absolu
                 
-                # Scan plus large (200 voisins) pour garantir des résultats même sans diversification
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(200, len(df)))
+                # Scan large pour trouver du même auteur si besoin
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(250, len(df)))
                 
-                response = f"Analyse pour : {title_in.upper()}\n\n"
-                response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
+                response = f"Analyse Stormy pour : {target_row['Book-Title'].upper()}\n\n"
                 
-                target_title = str(target_row['Book-Title']).lower()
-                target_author = str(target_row['Book-Author'])
+                t_title = str(target_row['Book-Title']).lower()
+                t_auth = str(target_row['Book-Author'])
                 def clean_auth(name): return "".join(filter(str.isalpha, str(name).lower()))
-                t_auth_c = clean_auth(target_author)
-                t_kw = [w for w in target_title.replace("(", "").replace(")", "").split() if len(w) > 3]
+                t_auth_c = clean_auth(t_auth)
+                t_kw = [w for w in t_title.replace("(", "").replace(")", "").split() if len(w) > 3]
 
-                seen_titles = [target_title[:20]]
-                mots_interdits = ["audio", "cd", "cassette", "sound recording", "talking book"]
+                seen_titles = [t_title[:20]]
                 found = 0
                 
                 for i in range(1, len(ind[0])):
                     if found >= count: break
                     res = df.iloc[ind[0][i]]
-                    titre_propre = str(res['Book-Title']).lower()
-                    res_author = str(res['Book-Author'])
-                    res_auth_c = clean_auth(res_author)
+                    res_title = str(res['Book-Title']).lower()
+                    res_auth = str(res['Book-Author'])
+                    res_auth_c = clean_auth(res_auth)
                     
-                    if any(mot in titre_propre for mot in mots_interdits): continue
-                    if titre_propre[:20] in seen_titles: continue
+                    if res_title[:20] in seen_titles: continue
 
-                    # LOGIQUE DE FILTRAGE RÉPARÉE
+                    # LOGIQUE DE FILTRAGE
                     if div:
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
-                        if any(k in titre_propre for k in t_kw): continue
+                        if any(k in res_title for k in t_kw): continue
                     else:
-                        # MODE STRICT : Uniquement le même auteur
                         if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
-                    seen_titles.append(titre_propre[:20])
+                    seen_titles.append(res_title[:20])
                 
-                if found == 0 and not div:
-                    response += "*(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)*"
+                if found == 0:
+                    response += "*(Aucun autre livre trouvé pour cet auteur. Essaye de diversifier !)*"
                 
-                response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
             else:
-                response = f"Je n'ai pas trouvé '{title_in}'. Peux-tu m'en dire un peu plus en me citant plusieurs mots-clés ?"
+                response = "Je n'ai pas trouvé ce livre. Peux-tu me donner des mots-clés sur l'histoire ?"
                 st.session_state.step = "ASK_SUMMARY"
 
         elif st.session_state.step == "ASK_SUMMARY":
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
+            # RECOPIE DE LA LOGIQUE 'FEATS' DE TON CLI
+            n_feat = f"Fantasy Fantasy | {user_title} | {prompt}"
+            n_emb = st_model.encode([n_feat])
+            scores = cosine_similarity(n_emb, embs)[0]
+            top_idx = np.argsort(scores)[::-1]
             
-            # LOGIQUE "FEATS" RESTAURÉE POUR LA QUALITÉ (Ancrage Fantasy pour HP)
-            nouveau_feat = f"Fantasy Fantasy | {user_title} | {prompt}"
-            nouveau_emb = st_model.encode([nouveau_feat])
-            
-            scores = cosine_similarity(nouveau_emb, embs)[0]
-            top_indices = np.argsort(scores)[::-1]
-            
-            response = f"Analyse pour : {user_title.upper()} ---\n\n"
-            seen_titles = [user_title.lower()[:20]]
-            mots_interdits = ["audio", "cd", "cassette", "sound recording", "talking book"]
+            response = f"Analyse pour : {user_title.upper()}\n\n"
+            seen = [user_title.lower()[:20]]
             found = 0
-            for idx in top_indices:
+            for idx in top_idx:
                 if found >= count: break
                 info = df.iloc[idx]
-                titre_propre = str(info['Book-Title']).lower()
-                
-                if not any(mot in titre_propre for mot in mots_interdits):
-                    base_title_short = titre_propre[:20]
-                    if base_title_short not in seen_titles:
-                        found += 1
-                        response += f"{found}. **{info['Book-Title']}** ({info['Book-Author']})\n"
-                        seen_titles.append(base_title_short)
-            
-            response += "\n\nOn continue ? Donne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
+                if str(info['Book-Title']).lower()[:20] not in seen:
+                    found += 1
+                    response += f"{found}. **{info['Book-Title']}** ({info['Book-Author']})\n"
+                    seen.append(str(info['Book-Title']).lower()[:20])
             st.session_state.step = "ASK_TITLE"
 
         st.markdown(response)
