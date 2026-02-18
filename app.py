@@ -109,19 +109,19 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
-            # FIX CRITIQUE : On trie par longueur de titre pour éviter "WE LOVE HARRY POTTER!"
-            m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
-            if auth_in:
-                m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
+            # FIX : Recherche intelligente pour éviter les titres parasites
+            m = df[df['Book-Title'].str.contains(rf"\b{title_in}\b", case=False, na=False, regex=True)].copy()
+            if m.empty: m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
+            if auth_in: m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
 
             if not m.empty:
-                # On prend le titre le plus court (souvent le livre original)
+                # On prend le livre avec le titre le plus court (le plus "pur")
                 m['len'] = m['Book-Title'].str.len()
                 target_row = m.sort_values('len').iloc[0]
                 idx_pos = target_row.name 
                 
-                # Scan plus profond pour le filtrage d'auteur
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
+                # Scan ultra-profond (2000 voisins)
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(2000, len(df)))
                 
                 response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
@@ -134,7 +134,6 @@ if prompt := st.chat_input("Réponds ici..."):
 
                 seen_titles = [t_title[:20]]
                 found = 0
-                
                 for i in range(1, len(ind[0])):
                     if found >= count: break
                     res = df.iloc[ind[0][i]]
@@ -144,11 +143,9 @@ if prompt := st.chat_input("Réponds ici..."):
                     if res_title[:20] in seen_titles: continue
 
                     if div:
-                        # DIVERSIFIER : On dégage le même auteur
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        # NE PAS DIVERSIFIER : On ne garde QUE le même auteur
                         if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
@@ -167,7 +164,13 @@ if prompt := st.chat_input("Réponds ici..."):
         elif st.session_state.step == "ASK_SUMMARY":
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
-            nouveau_feat = f"Fantasy Fantasy | {user_title} | {prompt}"
+            
+            # Inférence sémantique du genre (plus de hardcode "Fantasy")
+            cats = {"Fantasy": "magic wizards", "Sci-Fi": "space robots", "Thriller": "crime murder", "History": "past war"}
+            ref_labels, ref_embs = list(cats.keys()), st_model.encode(list(cats.values()))
+            best_g = ref_labels[np.argmax(cosine_similarity(st_model.encode([prompt]), ref_embs)[0])]
+
+            nouveau_feat = f"{best_g} {best_g} | {user_title} | {prompt}"
             nouveau_emb = st_model.encode([nouveau_feat])
             scores = cosine_similarity(nouveau_emb, embs)[0]
             top_indices = np.argsort(scores)[::-1]
