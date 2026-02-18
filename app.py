@@ -74,16 +74,26 @@ components.html("""
 (function() {
     var parentDoc = window.parent.document;
 
+    function isAssistantContainer(container) {
+        var img = container.querySelector('img');
+        if (img && img.src && img.src.includes('stormy')) return true;
+        var chatMsg = container.closest('[data-testid="stChatMessage"]');
+        if (!chatMsg) return false;
+        var name = chatMsg.getAttribute('aria-label') || '';
+        if (name.toLowerCase().includes('assistant')) return true;
+        var allMsgs = Array.from(parentDoc.querySelectorAll('[data-testid="stChatMessage"]'));
+        var idx = allMsgs.indexOf(chatMsg);
+        if (idx === 0) return true;
+        return false;
+    }
+
     function addPlusButtons() {
         var containers = parentDoc.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
         containers.forEach(function(container) {
-            var img = container.querySelector('img');
-            if (!img) return;
-            var isAssistant = img.src && (img.src.includes('stormy') || img.alt === 'assistant avatar');
-            if (isAssistant) return;
+            if (isAssistantContainer(container)) return;
             if (container.querySelector('.profile-plus-btn')) return;
             container.style.position = 'relative';
-            var btn = document.createElement('div');
+            var btn = parentDoc.createElement('div');
             btn.className = 'profile-plus-btn';
             btn.textContent = '+';
             btn.onclick = function(e) {
@@ -99,11 +109,19 @@ components.html("""
         if (!saved) return;
         var containers = parentDoc.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
         containers.forEach(function(container) {
-            var img = container.querySelector('img');
-            if (!img) return;
-            var isAssistant = img.src && (img.src.includes('stormy') || img.alt === 'assistant avatar');
-            if (isAssistant) return;
+            if (isAssistantContainer(container)) return;
+            var existingImg = container.querySelector('img.custom-profile');
+            if (existingImg) {
+                if (existingImg.src !== saved) existingImg.src = saved;
+                return;
+            }
+            var inner = container.firstElementChild;
+            if (inner) inner.style.display = 'none';
+            var img = parentDoc.createElement('img');
+            img.className = 'custom-profile';
             img.src = saved;
+            img.style.cssText = 'width:100%;height:100%;border-radius:50%;object-fit:cover;';
+            container.insertBefore(img, container.firstChild);
         });
     }
 
@@ -313,6 +331,3 @@ if prompt := st.chat_input("Réponds ici..."):
 
         st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
-
-
-
