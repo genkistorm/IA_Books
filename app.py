@@ -31,93 +31,74 @@ USER_ICON = os.path.join(dossier_actuel, "user_icon.png")
 AI_AVATAR = AI_ICON if os.path.exists(AI_ICON) else "🤖"
 USER_AVATAR = USER_ICON if os.path.exists(USER_ICON) else "👤"
 
-st.markdown("""
-<style>
-    .profile-plus-btn {
-        position: absolute !important;
-        bottom: -2px !important;
-        right: -2px !important;
-        width: 18px !important;
-        height: 18px !important;
-        border-radius: 50% !important;
-        background: linear-gradient(135deg, #4F8BF9, #BC67FB) !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        font-size: 12px !important;
-        font-weight: bold !important;
-        color: white !important;
-        border: 1.5px solid #1a1a2e !important;
-        cursor: pointer !important;
-        box-shadow: 0 2px 6px rgba(79,139,249,0.4) !important;
-        transition: transform 0.2s !important;
-        z-index: 999 !important;
-        line-height: 1 !important;
-    }
-    .profile-plus-btn:hover {
-        transform: scale(1.2) !important;
-    }
-</style>
+components.html("""
 <input type="file" id="stormy-profile-upload" accept="image/*" style="display:none;" />
-<img src="data:," onerror="
+<script>
 (function() {
-    if (window._stormyProfileInit) return;
-    window._stormyProfileInit = true;
+    var P = window.parent.document;
+
+    var style = P.createElement('style');
+    style.textContent = '.profile-plus-btn{position:absolute!important;bottom:-2px!important;right:-2px!important;width:18px!important;height:18px!important;border-radius:50%!important;background:linear-gradient(135deg,#4F8BF9,#BC67FB)!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:12px!important;font-weight:bold!important;color:white!important;border:1.5px solid #1a1a2e!important;cursor:pointer!important;box-shadow:0 2px 6px rgba(79,139,249,0.4)!important;transition:transform 0.2s!important;z-index:999!important;line-height:1!important}.profile-plus-btn:hover{transform:scale(1.2)!important}';
+    P.head.appendChild(style);
+
+    var fileInput = document.getElementById('stormy-profile-upload');
 
     function isAssistant(container) {
         var img = container.querySelector('img');
         if (img && img.src && img.src.indexOf('stormy') !== -1) return true;
         if (img && img.className && img.className.indexOf('custom-profile') !== -1) return false;
-        var chatMsg = container.closest('[data-testid=stChatMessage]');
+        var chatMsg = container.closest('[data-testid="stChatMessage"]');
         if (!chatMsg) return false;
         var label = chatMsg.getAttribute('aria-label') || '';
         if (label.toLowerCase().indexOf('assistant') !== -1) return true;
-        var allMsgs = document.querySelectorAll('[data-testid=stChatMessage]');
+        var allMsgs = P.querySelectorAll('[data-testid="stChatMessage"]');
         var idx = Array.prototype.indexOf.call(allMsgs, chatMsg);
         return idx === 0;
     }
 
     function addButtons() {
-        var cs = document.querySelectorAll('[data-testid=stChatMessageAvatarContainer]');
+        var cs = P.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
         for (var i = 0; i < cs.length; i++) {
             var c = cs[i];
             if (isAssistant(c)) continue;
             if (c.querySelector('.profile-plus-btn')) continue;
             c.style.position = 'relative';
-            var b = document.createElement('div');
+            var b = P.createElement('div');
             b.className = 'profile-plus-btn';
             b.textContent = '+';
-            b.onclick = function(e) { e.stopPropagation(); document.getElementById('stormy-profile-upload').click(); };
+            b.addEventListener('click', function(e) {
+                e.stopPropagation();
+                fileInput.click();
+            });
             c.appendChild(b);
         }
     }
 
     function replaceAvatars() {
-        var saved = localStorage.getItem('stormy_profile_pic');
+        var saved = window.parent.localStorage.getItem('stormy_profile_pic');
         if (!saved) return;
-        var cs = document.querySelectorAll('[data-testid=stChatMessageAvatarContainer]');
+        var cs = P.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
         for (var i = 0; i < cs.length; i++) {
             var c = cs[i];
             if (isAssistant(c)) continue;
-            if (c.querySelector('.custom-profile')) {
-                var ex = c.querySelector('.custom-profile');
-                if (ex.src !== saved) ex.src = saved;
+            var existing = c.querySelector('.custom-profile');
+            if (existing) {
+                if (existing.src !== saved) existing.src = saved;
                 continue;
             }
             var ch = c.children;
             for (var j = 0; j < ch.length; j++) {
                 if (!ch[j].classList.contains('profile-plus-btn')) ch[j].style.display = 'none';
             }
-            var im = document.createElement('img');
+            var im = P.createElement('img');
             im.className = 'custom-profile';
             im.src = saved;
-            im.style.cssText = 'width:100%25;height:100%25;border-radius:50%25;object-fit:cover;';
+            im.style.cssText = 'width:100%;height:100%;border-radius:50%;object-fit:cover;';
             c.insertBefore(im, c.firstChild);
         }
     }
 
-    var fi = document.getElementById('stormy-profile-upload');
-    if (fi) fi.addEventListener('change', function(e) {
+    fileInput.addEventListener('change', function(e) {
         var f = e.target.files[0];
         if (!f) return;
         var r = new FileReader();
@@ -127,11 +108,12 @@ st.markdown("""
                 var cv = document.createElement('canvas');
                 cv.width = 200; cv.height = 200;
                 var ctx = cv.getContext('2d');
-                var sx=0,sy=0,sw=img.width,sh=img.height;
-                if(sw>sh){sx=(sw-sh)/2;sw=sh;}else{sy=(sh-sw)/2;sh=sw;}
-                ctx.drawImage(img,sx,sy,sw,sh,0,0,200,200);
-                var res = cv.toDataURL('image/jpeg',0.8);
-                localStorage.setItem('stormy_profile_pic',res);
+                var sx=0, sy=0, sw=img.width, sh=img.height;
+                if (sw > sh) { sx=(sw-sh)/2; sw=sh; }
+                else { sy=(sh-sw)/2; sh=sw; }
+                ctx.drawImage(img, sx, sy, sw, sh, 0, 0, 200, 200);
+                var res = cv.toDataURL('image/jpeg', 0.8);
+                window.parent.localStorage.setItem('stormy_profile_pic', res);
                 replaceAvatars();
             };
             img.src = ev.target.result;
@@ -139,10 +121,10 @@ st.markdown("""
         r.readAsDataURL(f);
     });
 
-    setInterval(function(){ addButtons(); replaceAvatars(); }, 1000);
+    setInterval(function() { addButtons(); replaceAvatars(); }, 1000);
 })();
-" style="display:none;" />
-""", unsafe_allow_html=True)
+</script>
+""", height=1)
 
 
 @st.cache_resource
