@@ -30,37 +30,36 @@ USER_ICON = os.path.join(dossier_actuel, "user_icon.png")
 AI_AVATAR = AI_ICON if os.path.exists(AI_ICON) else "🤖"
 USER_AVATAR = USER_ICON if os.path.exists(USER_ICON) else "👤"
 
-# --- 3. CHARGEMENT DES RESSOURCES (VERSION ANTI-CRASH RAM) ---
+# --- 3. CHARGEMENT DES RESSOURCES (CORRECTION RAM & INDEX) ---
 @st.cache_resource
 def load_resources():
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-    
-    # Chargement du catalogue et FORCE la synchronisation des index
     df = pd.read_csv(os.path.join(dossier_actuel, "data_checkpoint.csv"), encoding='utf-8-sig')
-    df = df.reset_index(drop=True)
+    df = df.reset_index(drop=True) # Synchronisation index/matrice
     
-    # Recollage via le disque (beaucoup plus léger pour la mémoire Streamlit)
+    import io
     def glue_to_disk(prefix, count, extension):
         temp_path = os.path.join(dossier_actuel, f"temp_{prefix}.{extension}")
         with open(temp_path, 'wb') as f_out:
             for i in range(1, count + 1):
                 p = os.path.join(dossier_actuel, f"{prefix}_part{i}.{extension}")
                 if os.path.exists(p):
-                    with open(p, 'rb') as f_in:
-                        f_out.write(f_in.read())
+                    with open(p, 'rb') as f_in: f_out.write(f_in.read())
         return temp_path
 
     knn = joblib.load(glue_to_disk("moteur_knn", 10, "pkl"))
     embs = np.load(glue_to_disk("ia_memory", 5, "npy"))
     h_mat = load_npz(glue_to_disk("matrice_hybride", 5, "npz"))
 
-    # Nettoyage des chaînes de caractères
-    df['Book-Title'] = df['Book-Title'].astype(str).str.strip()
-    df['Book-Author'] = df['Book-Author'].astype(str).str.strip()
+    def fix_encoding(text):
+        if not isinstance(text, str): return str(text)
+        try: return text.encode('cp1252').decode('utf-8')
+        except: return text
+    df['Book-Title'] = df['Book-Title'].apply(fix_encoding)
 
     return df, h_mat, knn, st_model, embs
 
-with st.spinner('Chargement de Stormy (cela peut prendre 1 min)...'):
+with st.spinner('Chargement de Stormy...'):
     df, h_mat, knn, st_model, embs = load_resources()
 
 # --- 4. INITIALISATION DU CHAT ---
@@ -103,22 +102,23 @@ if prompt := st.chat_input("Réponds ici..."):
             st.session_state.step = "ASK_DIVERSITY"
 
         elif st.session_state.step == "ASK_DIVERSITY":
-            div = prompt.lower() in ['o', 'oui', 'ouais']
+            st.session_state.temp_data["diversify"] = prompt.lower() in ['o', 'oui', 'ouais']
+            
             title_in = st.session_state.temp_data["title"]
             auth_in = st.session_state.temp_data["author"]
             count = st.session_state.temp_data["count"]
+            div = st.session_state.temp_data["diversify"]
 
-            # Recherche du livre avec l'index positionnel
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
             if auth_in:
                 m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
 
             if not m.empty:
                 idx_pos = m.index[0] 
-                # On scanne 500 voisins pour être sûr de trouver de la qualité
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(500, len(df)))
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(250, len(df)))
                 
-                response = f"Analyse Stormy pour : {title_in.upper()}\n\n"
+                # DIALOGUE ORIGINAL RESTAURÉ
+                response = f"Analyse pour : {title_in.upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
                 
                 target_title = str(m.iloc[0]['Book-Title']).lower()
@@ -134,27 +134,28 @@ if prompt := st.chat_input("Réponds ici..."):
                     if found >= count: break
                     res = df.iloc[ind[0][i]]
                     res_title = str(res['Book-Title']).lower()
-                    res_auth_c = clean_auth(str(res['Book-Author']))
+                    res_author = str(res['Book-Author'])
+                    res_auth_c = clean_auth(res_author)
                     
                     if res_title[:20] in seen_titles: continue
 
-                    # --- LOGIQUE DE FILTRAGE ASSOUPLIE ---
+                    # LOGIQUE TECHNIQUE (SANS TOUCHER AUX TEXTES)
                     if div:
-                        # Si Diversifier = OUI : on dégage le même auteur et les suites
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     
-                    # Si Diversifier = NON : on laisse le KNN travailler naturellement. 
-                    # Il trouvera le même auteur en priorité, puis le même genre. 
-                    # On ne met plus de "else: continue" qui tuait les résultats.
+                    # On ne met pas de "else: continue" ici, ce qui permet au KNN
+                    # de proposer les livres les plus proches (même auteur, puis même genre)
+                    # quand div est False.
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(res_title[:20])
                 
+                response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
             else:
-                response = f"Je n'ai pas trouvé '{title_in}'. Peux-tu m'en dire plus avec des mots-clés ?"
+                response = f"Je n'ai pas trouvé '{title_in}'. Peux-tu m'en dire un peu plus en me citant plusieurs mots-clés ?"
                 st.session_state.step = "ASK_SUMMARY"
 
         elif st.session_state.step == "ASK_SUMMARY":
@@ -165,7 +166,8 @@ if prompt := st.chat_input("Réponds ici..."):
             scores = cosine_similarity(nouveau_emb, embs)[0]
             top_indices = np.argsort(scores)[::-1]
             
-            response = f"Analyse pour : {user_title.upper()}\n\n"
+            # DIALOGUE ORIGINAL RESTAURÉ (AVEC LES ---)
+            response = f"Analyse pour : {user_title.upper()} ---\n\n"
             seen = [user_title.lower()[:20]]
             found = 0
             for idx in top_indices:
@@ -175,6 +177,8 @@ if prompt := st.chat_input("Réponds ici..."):
                     found += 1
                     response += f"{found}. **{info['Book-Title']}** ({info['Book-Author']})\n"
                     seen.append(str(info['Book-Title']).lower()[:20])
+            
+            response += "\n\nOn continue ? Donne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
             st.session_state.step = "ASK_TITLE"
 
         st.markdown(response)
