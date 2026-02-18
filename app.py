@@ -109,18 +109,18 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
-            # FIX : Recherche intelligente pour éviter les titres parasites
+            # RECHERCHE AMÉLIORÉE : On priorise le titre exact
             m = df[df['Book-Title'].str.contains(rf"\b{title_in}\b", case=False, na=False, regex=True)].copy()
             if m.empty: m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
             if auth_in: m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
 
             if not m.empty:
-                # On prend le livre avec le titre le plus court (le plus "pur")
+                # On trie par longueur de titre pour prendre le plus court (ex: Harry Potter avant Harry Potter Guide)
                 m['len'] = m['Book-Title'].str.len()
                 target_row = m.sort_values('len').iloc[0]
                 idx_pos = target_row.name 
                 
-                # Scan ultra-profond (2000 voisins)
+                # On scanne 2000 voisins pour être sûr de trouver les tomes de Rowling
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(2000, len(df)))
                 
                 response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
@@ -146,6 +146,7 @@ if prompt := st.chat_input("Réponds ici..."):
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
+                        # Si NON diversifié : On ne garde que le même auteur
                         if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
@@ -165,7 +166,7 @@ if prompt := st.chat_input("Réponds ici..."):
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
             
-            # Inférence sémantique du genre (plus de hardcode "Fantasy")
+            # Détection dynamique du genre
             cats = {"Fantasy": "magic wizards", "Sci-Fi": "space robots", "Thriller": "crime murder", "History": "past war"}
             ref_labels, ref_embs = list(cats.keys()), st_model.encode(list(cats.values()))
             best_g = ref_labels[np.argmax(cosine_similarity(st_model.encode([prompt]), ref_embs)[0])]
