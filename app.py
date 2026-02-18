@@ -56,6 +56,7 @@ def load_resources():
         try: return text.encode('cp1252').decode('utf-8')
         except: return text
     df['Book-Title'] = df['Book-Title'].apply(fix_encoding)
+    df['Book-Author'] = df['Book-Author'].apply(fix_encoding)
 
     return df, h_mat, knn, st_model, embs
 
@@ -114,7 +115,7 @@ if prompt := st.chat_input("Réponds ici..."):
 
             if not m.empty:
                 idx_pos = m.index[0] 
-                # On scanne beaucoup plus de voisins pour trouver les livres du même auteur
+                # SCAN PROFOND (1000 voisins) pour ne pas rater l'auteur original
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
                 response = f"Analyse pour : {title_in.upper()}\n\n"
@@ -137,21 +138,19 @@ if prompt := st.chat_input("Réponds ici..."):
                     
                     if res_title[:20] in seen_titles: continue
 
-                    # --- LOGIQUE DE FILTRAGE STRICTE ---
                     if div:
-                        # Si OUI : on exclut le même auteur
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        # Si NON : on n'accepte QUE le même auteur
+                        # VERROU STRICT : Seulement le même auteur
                         if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(res_title[:20])
                 
-                if found == 0 and not div:
-                    response += "*(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)*"
+                if found == 0:
+                    response += "(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)"
                 
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
