@@ -1,7 +1,7 @@
-streamlit
-pandas
-numpy
-scipy
-scikit-learn
-sentence-transformers
-joblib
+pandas==2.3.3
+numpy==2.4.2
+scikit-learn==1.7.0
+sentence-transformers==5.2.3
+joblib==1.5.3
+scipy==1.17.0
+streamlit==1.54.0
