@@ -6,7 +6,7 @@ from scipy.sparse import load_npz
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# --- 1. CONFIGURATION ET STYLE CSS ---
+# --- 1. CONFIGURATION ET STYLE CSS (Strictement identique) ---
 st.set_page_config(page_title="Stormy AI", page_icon="⚡", layout="centered")
 
 st.markdown("""
@@ -30,11 +30,14 @@ USER_ICON = os.path.join(dossier_actuel, "user_icon.png")
 AI_AVATAR = AI_ICON if os.path.exists(AI_ICON) else "🤖"
 USER_AVATAR = USER_ICON if os.path.exists(USER_ICON) else "👤"
 
-# --- 3. CHARGEMENT DES RESSOURCES ---
+# --- 3. CHARGEMENT DES RESSOURCES (RECOLLAGE TECHNIQUE) ---
 @st.cache_resource
 def load_resources():
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    
+    # CHARGEMENT ET SYNCHRONISATION CRITIQUE DES INDEX
     df = pd.read_csv(os.path.join(dossier_actuel, "data_checkpoint.csv"), encoding='utf-8-sig')
+    df = df.reset_index(drop=True) # Force l'index à 0, 1, 2... pour correspondre à la matrice
     
     import io
 
@@ -66,17 +69,20 @@ def load_resources():
     h_mat = load_npz(h_mat_data)
 
     def fix_encoding(text):
-        if not isinstance(text, str): return text
-        try: return text.encode('cp1252').decode('utf-8')
-        except: return text
+        if not isinstance(text, str): return str(text)
+        try: return text.encode('cp1252').decode('utf-8').strip()
+        except: return text.strip()
+    
     df['Book-Title'] = df['Book-Title'].apply(fix_encoding)
+    df['Book-Author'] = df['Book-Author'].apply(fix_encoding)
 
     return df, h_mat, knn, st_model, embs
 
+# --- L'APPEL QUI DÉFINIT 'df' GLOBALEMENT ---
 with st.spinner('Chargement de Stormy...'):
     df, h_mat, knn, st_model, embs = load_resources()
 
-# --- 4. INITIALISATION DU CHAT ---
+# --- 4. INITIALISATION DU CHAT (Tes textes originaux) ---
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Salut ! Je suis **Stormy**. Je suis capable de te recommander des livres en fonction de tes goûts ! Pour commencer, dis-moi quel est ton livre préféré (ou un livre que tu as aimé récemment) (**de préférence en anglais**)."}]
 if "step" not in st.session_state:
@@ -123,15 +129,17 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
+            # RECHERCHE DE L'INDEX RÉEL DANS LE DF
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
             if auth_in:
                 m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
 
             if not m.empty:
                 target_row = m.iloc[0]
-                idx_pos = target_row.name
-                # Récupération de plus de voisins pour compenser le filtrage strict
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(100, len(df)))
+                idx_pos = m.index[0] # ON UTILISE L'INDEX DU DF POUR LA MATRICE
+                
+                # Scan plus large (200 voisins) pour garantir des résultats même sans diversification
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(200, len(df)))
                 
                 response = f"Analyse pour : {title_in.upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
@@ -158,16 +166,18 @@ if prompt := st.chat_input("Réponds ici..."):
 
                     # LOGIQUE DE FILTRAGE RÉPARÉE
                     if div:
-                        # Diversification : On exclut le même auteur et les suites
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in titre_propre for k in t_kw): continue
                     else:
-                        # Non diversifié : On ne garde QUE le même auteur
+                        # MODE STRICT : Uniquement le même auteur
                         if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(titre_propre[:20])
+                
+                if found == 0 and not div:
+                    response += "*(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)*"
                 
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
@@ -179,12 +189,10 @@ if prompt := st.chat_input("Réponds ici..."):
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
             
-            # LOGIQUE "FEATS" RESTAURÉE POUR LA QUALITÉ
-            # On simule un ancrage de genre pour stabiliser la recherche vectorielle
+            # LOGIQUE "FEATS" RESTAURÉE POUR LA QUALITÉ (Ancrage Fantasy pour HP)
             nouveau_feat = f"Fantasy Fantasy | {user_title} | {prompt}"
             nouveau_emb = st_model.encode([nouveau_feat])
             
-            # Comparaison avec la mémoire IA globale
             scores = cosine_similarity(nouveau_emb, embs)[0]
             top_indices = np.argsort(scores)[::-1]
             
