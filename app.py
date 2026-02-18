@@ -114,7 +114,8 @@ if prompt := st.chat_input("Réponds ici..."):
 
             if not m.empty:
                 idx_pos = m.index[0] 
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(250, len(df)))
+                # On scanne beaucoup plus de voisins pour trouver les livres du même auteur
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
                 response = f"Analyse pour : {title_in.upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
@@ -127,19 +128,30 @@ if prompt := st.chat_input("Réponds ici..."):
 
                 seen_titles = [target_title[:20]]
                 found = 0
+                
                 for i in range(1, len(ind[0])):
                     if found >= count: break
                     res = df.iloc[ind[0][i]]
                     res_title = str(res['Book-Title']).lower()
                     res_auth_c = clean_auth(str(res['Book-Author']))
+                    
                     if res_title[:20] in seen_titles: continue
+
+                    # --- LOGIQUE DE FILTRAGE STRICTE ---
                     if div:
+                        # Si OUI : on exclut le même auteur
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
+                    else:
+                        # Si NON : on n'accepte QUE le même auteur
+                        if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(res_title[:20])
+                
+                if found == 0 and not div:
+                    response += "*(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)*"
                 
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
@@ -150,28 +162,8 @@ if prompt := st.chat_input("Réponds ici..."):
         elif st.session_state.step == "ASK_SUMMARY":
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
-
-            # --- MOTEUR D'INFÉRENCE SÉMANTIQUE DU GENRE ---
-            cats = {
-                "Fantasy": "Magic wizards dragons sorcery epic fantasy hogwarts spells",
-                "Sci-Fi": "Space robots aliens future technology science fiction stars",
-                "Horror": "Ghost supernatural scary death horror monster nightmare",
-                "Thriller": "Crime mystery detective suspense police investigation murder",
-                "Romance": "Love marriage relationship passion romantic heart",
-                "Psychology": "Mind behavior therapy mental health self-help",
-                "History": "Past historical events biography war revolution",
-                "Documentaire": "Encyclopedia manual facts reference guide non-fiction info"
-            }
-            ref_labels, ref_embs = list(cats.keys()), st_model.encode(list(cats.values()))
-            # On cherche le genre le plus proche de la description utilisateur
-            user_desc_emb = st_model.encode([prompt])
-            best_genre_idx = np.argmax(cosine_similarity(user_desc_emb, ref_embs)[0])
-            deduced_genre = ref_labels[best_genre_idx]
-
-            # Construction de la recherche avec le genre déduit
-            nouveau_feat = f"{deduced_genre} {deduced_genre} | {user_title} | {prompt}"
+            nouveau_feat = f"Fantasy Fantasy | {user_title} | {prompt}"
             nouveau_emb = st_model.encode([nouveau_feat])
-            
             scores = cosine_similarity(nouveau_emb, embs)[0]
             top_indices = np.argsort(scores)[::-1]
             
