@@ -6,7 +6,7 @@ from scipy.sparse import load_npz
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# --- 1. CONFIGURATION ET STYLE CSS (Strictement identique) ---
+# --- 1. CONFIGURATION ET STYLE CSS ---
 st.set_page_config(page_title="Stormy AI", page_icon="⚡", layout="centered")
 
 st.markdown("""
@@ -30,7 +30,7 @@ USER_ICON = os.path.join(dossier_actuel, "user_icon.png")
 AI_AVATAR = AI_ICON if os.path.exists(AI_ICON) else "🤖"
 USER_AVATAR = USER_ICON if os.path.exists(USER_ICON) else "👤"
 
-# --- 3. CHARGEMENT DES RESSOURCES (Synchronisation et RAM) ---
+# --- 3. CHARGEMENT DES RESSOURCES (SYNCHRONISATION ET RAM) ---
 @st.cache_resource
 def load_resources():
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
@@ -109,19 +109,21 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
-            # RECHERCHE AMÉLIORÉE : On priorise le titre exact
-            m = df[df['Book-Title'].str.contains(rf"\b{title_in}\b", case=False, na=False, regex=True)].copy()
-            if m.empty: m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
-            if auth_in: m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
+            # RECHERCHE AMÉLIORÉE : On priorise le titre exact ou le plus court
+            m = df[df['Book-Title'].str.fullmatch(title_in, case=False, na=False)].copy()
+            if m.empty:
+                m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
+            if auth_in:
+                m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
 
             if not m.empty:
-                # On trie par longueur de titre pour prendre le plus court (ex: Harry Potter avant Harry Potter Guide)
+                # Tri par longueur pour éviter les "Guides" ou "Companions"
                 m['len'] = m['Book-Title'].str.len()
                 target_row = m.sort_values('len').iloc[0]
                 idx_pos = target_row.name 
                 
-                # On scanne 2000 voisins pour être sûr de trouver les tomes de Rowling
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(2000, len(df)))
+                # Scan profond pour garantir des résultats même sans diversification
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
                 response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
@@ -138,7 +140,8 @@ if prompt := st.chat_input("Réponds ici..."):
                     if found >= count: break
                     res = df.iloc[ind[0][i]]
                     res_title = str(res['Book-Title']).lower()
-                    res_auth_c = clean_auth(str(res['Book-Author']))
+                    res_author = str(res['Book-Author'])
+                    res_auth_c = clean_auth(res_author)
                     
                     if res_title[:20] in seen_titles: continue
 
@@ -146,7 +149,7 @@ if prompt := st.chat_input("Réponds ici..."):
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        # Si NON diversifié : On ne garde que le même auteur
+                        # Si NON diversifié : On reste sur l'auteur original
                         if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
@@ -166,7 +169,7 @@ if prompt := st.chat_input("Réponds ici..."):
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
             
-            # Détection dynamique du genre
+            # Déduction sémantique du genre pour la qualité
             cats = {"Fantasy": "magic wizards", "Sci-Fi": "space robots", "Thriller": "crime murder", "History": "past war"}
             ref_labels, ref_embs = list(cats.keys()), st_model.encode(list(cats.values()))
             best_g = ref_labels[np.argmax(cosine_similarity(st_model.encode([prompt]), ref_embs)[0])]
