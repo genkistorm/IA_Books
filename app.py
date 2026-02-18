@@ -109,48 +109,53 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
+            # Priorisation des titres plus courts pour éviter de matcher les "Companions" en premier
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
             if auth_in:
                 m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
-
+            
             if not m.empty:
-                idx_pos = m.index[0] 
-                # SCAN PROFOND (1000 voisins) pour ne pas rater l'auteur original
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
+                m['len'] = m['Book-Title'].str.len()
+                target_row = m.sort_values('len').iloc[0]
+                idx_pos = target_row.name 
                 
-                response = f"Analyse pour : {title_in.upper()}\n\n"
+                # Scan ultra-profond (2000 voisins) pour ne rien rater
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(2000, len(df)))
+                
+                response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
                 
-                target_title = str(m.iloc[0]['Book-Title']).lower()
-                target_author = str(m.iloc[0]['Book-Author'])
+                t_title = str(target_row['Book-Title']).lower()
+                t_auth = str(target_row['Book-Author'])
                 def clean_auth(name): return "".join(filter(str.isalpha, str(name).lower()))
-                t_auth_c = clean_auth(target_author)
-                t_kw = [w for w in target_title.replace("(", "").replace(")", "").split() if len(w) > 3]
+                t_auth_clean = clean_auth(t_auth)
+                t_kw = [w for w in t_title.replace("(", "").replace(")", "").split() if len(w) > 3]
 
-                seen_titles = [target_title[:20]]
+                seen_titles = [t_title[:20]]
                 found = 0
                 
                 for i in range(1, len(ind[0])):
                     if found >= count: break
                     res = df.iloc[ind[0][i]]
                     res_title = str(res['Book-Title']).lower()
-                    res_auth_c = clean_auth(str(res['Book-Author']))
+                    res_auth_clean = clean_auth(str(res['Book-Author']))
                     
                     if res_title[:20] in seen_titles: continue
 
                     if div:
-                        if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
+                        # Si OUI : on exclut l'auteur original
+                        if res_auth_clean in t_auth_clean or t_auth_clean in res_auth_clean: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        # VERROU STRICT : Seulement le même auteur
-                        if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
+                        # Si NON : on n'accepte QUE le même auteur au début
+                        if res_auth_clean not in t_auth_clean and t_auth_clean not in res_auth_clean:
+                            # Si on a déjà scanné beaucoup de livres et qu'on n'a rien, on laisse le KNN
+                            # proposer les plus proches sémantiquement pour ne pas finir vide
+                            if i < 500: continue 
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(res_title[:20])
-                
-                if found == 0:
-                    response += "(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)"
                 
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
