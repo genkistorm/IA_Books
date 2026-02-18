@@ -171,7 +171,7 @@ if prompt := st.chat_input("Réponds ici..."):
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
             else:
-                response = f"Je n'ai pas trouvé '{title_in}'. Peux-tu m'en dire un peu plus ?"
+                response = f"Je n'ai pas trouvé '{title_in}'. Peux-tu m'en dire un peu plus en me citant plusieurs mots-clés ?"
                 st.session_state.step = "ASK_SUMMARY"
 
         elif st.session_state.step == "ASK_SUMMARY":
