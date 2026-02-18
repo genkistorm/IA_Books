@@ -41,10 +41,6 @@ else:
 
 st.markdown("""
 <style>
-    .stChatMessage[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) .stChatMessageAvatarContainer,
-    .stChatMessage[data-testid="stChatMessage"] img[alt="user avatar"] {
-        position: relative;
-    }
     .profile-plus-btn {
         position: absolute;
         bottom: -2px;
@@ -70,11 +66,16 @@ st.markdown("""
         transform: scale(1.2);
     }
 </style>
+""", unsafe_allow_html=True)
+
+components.html("""
 <input type="file" id="stormy-profile-upload" accept="image/*" style="display:none;" />
 <script>
 (function() {
+    var parentDoc = window.parent.document;
+
     function addPlusButtons() {
-        var containers = document.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
+        var containers = parentDoc.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
         containers.forEach(function(container) {
             var img = container.querySelector('img');
             if (!img) return;
@@ -96,7 +97,7 @@ st.markdown("""
     function replaceUserAvatars() {
         var saved = localStorage.getItem('stormy_profile_pic');
         if (!saved) return;
-        var containers = document.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
+        var containers = parentDoc.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
         containers.forEach(function(container) {
             var img = container.querySelector('img');
             if (!img) return;
@@ -137,7 +138,7 @@ st.markdown("""
     }, 1000);
 })();
 </script>
-""", unsafe_allow_html=True)
+""", height=0)
 
 
 
@@ -312,5 +313,6 @@ if prompt := st.chat_input("Réponds ici..."):
 
         st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
+
 
 
