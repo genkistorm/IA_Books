@@ -39,69 +39,106 @@ if os.path.exists(USER_ICON):
 else:
     default_avatar_src = ""
 
-with st.sidebar:
-    st.markdown("### Mon profil")
+st.markdown("""
+<style>
+    .stChatMessage[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) .stChatMessageAvatarContainer,
+    .stChatMessage[data-testid="stChatMessage"] img[alt="user avatar"] {
+        position: relative;
+    }
+    .profile-plus-btn {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4F8BF9, #BC67FB);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+        color: white;
+        border: 1.5px solid #1a1a2e;
+        cursor: pointer;
+        box-shadow: 0 2px 6px rgba(79,139,249,0.4);
+        transition: transform 0.2s;
+        z-index: 999;
+        line-height: 1;
+    }
+    .profile-plus-btn:hover {
+        transform: scale(1.2);
+    }
+</style>
+<input type="file" id="stormy-profile-upload" accept="image/*" style="display:none;" />
+<script>
+(function() {
+    function addPlusButtons() {
+        var containers = document.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
+        containers.forEach(function(container) {
+            var img = container.querySelector('img');
+            if (!img) return;
+            var isAssistant = img.src && (img.src.includes('stormy') || img.alt === 'assistant avatar');
+            if (isAssistant) return;
+            if (container.querySelector('.profile-plus-btn')) return;
+            container.style.position = 'relative';
+            var btn = document.createElement('div');
+            btn.className = 'profile-plus-btn';
+            btn.textContent = '+';
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                document.getElementById('stormy-profile-upload').click();
+            };
+            container.appendChild(btn);
+        });
+    }
 
-    profile_pic_html = f"""
-    <div style="display:flex; justify-content:center; margin-bottom:20px;">
-        <div id="profile-wrapper" style="position:relative; width:100px; height:100px; cursor:pointer;" onclick="document.getElementById('profile-upload').click()">
-            <img id="profile-img" src="{default_avatar_src}"
-                 style="width:100px; height:100px; border-radius:50%; object-fit:cover; border:3px solid #4F8BF9; background:#2a2a2a;"
-                 onerror="this.style.display='none'; document.getElementById('profile-placeholder').style.display='flex';" />
-            <div id="profile-placeholder" style="display:none; width:100px; height:100px; border-radius:50%;
-                 background:linear-gradient(135deg, #4F8BF9, #BC67FB); align-items:center; justify-content:center;
-                 font-size:40px; color:white; border:3px solid #4F8BF9;">👤</div>
-            <div style="position:absolute; bottom:2px; right:2px; width:28px; height:28px; border-radius:50%;
-                 background:linear-gradient(135deg, #4F8BF9, #BC67FB); display:flex; align-items:center;
-                 justify-content:center; font-size:16px; font-weight:bold; color:white; border:2px solid #1a1a2e;
-                 box-shadow: 0 2px 8px rgba(79,139,249,0.4); transition: transform 0.2s;"
-                 onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'">+</div>
-            <input type="file" id="profile-upload" accept="image/*" style="display:none;" />
-        </div>
-    </div>
-    <script>
-        // Charger la photo sauvegardée au démarrage
-        (function() {{
-            var saved = localStorage.getItem('stormy_profile_pic');
-            if (saved) {{
-                document.getElementById('profile-img').src = saved;
-                document.getElementById('profile-img').style.display = 'block';
-                document.getElementById('profile-placeholder').style.display = 'none';
-            }}
-        }})();
+    function replaceUserAvatars() {
+        var saved = localStorage.getItem('stormy_profile_pic');
+        if (!saved) return;
+        var containers = document.querySelectorAll('[data-testid="stChatMessageAvatarContainer"]');
+        containers.forEach(function(container) {
+            var img = container.querySelector('img');
+            if (!img) return;
+            var isAssistant = img.src && (img.src.includes('stormy') || img.alt === 'assistant avatar');
+            if (isAssistant) return;
+            img.src = saved;
+        });
+    }
 
-        document.getElementById('profile-upload').addEventListener('change', function(e) {{
-            var file = e.target.files[0];
-            if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function(ev) {{
-                var dataUrl = ev.target.result;
-                // Redimensionner pour ne pas surcharger localStorage
-                var img = new Image();
-                img.onload = function() {{
-                    var canvas = document.createElement('canvas');
-                    var size = 200;
-                    canvas.width = size;
-                    canvas.height = size;
-                    var ctx = canvas.getContext('2d');
-                    // Crop carré centré
-                    var sx=0, sy=0, sw=img.width, sh=img.height;
-                    if (sw > sh) {{ sx = (sw-sh)/2; sw = sh; }}
-                    else {{ sy = (sh-sw)/2; sh = sw; }}
-                    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
-                    var resized = canvas.toDataURL('image/jpeg', 0.8);
-                    localStorage.setItem('stormy_profile_pic', resized);
-                    document.getElementById('profile-img').src = resized;
-                    document.getElementById('profile-img').style.display = 'block';
-                    document.getElementById('profile-placeholder').style.display = 'none';
-                }};
-                img.src = dataUrl;
-            }};
-            reader.readAsDataURL(file);
-        }});
-    </script>
-    """
-    components.html(profile_pic_html, height=150)
+    document.getElementById('stormy-profile-upload').addEventListener('change', function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+            var imgEl = new Image();
+            imgEl.onload = function() {
+                var canvas = document.createElement('canvas');
+                var size = 200;
+                canvas.width = size;
+                canvas.height = size;
+                var ctx = canvas.getContext('2d');
+                var sx=0, sy=0, sw=imgEl.width, sh=imgEl.height;
+                if (sw > sh) { sx = (sw-sh)/2; sw = sh; }
+                else { sy = (sh-sw)/2; sh = sw; }
+                ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, size, size);
+                var resized = canvas.toDataURL('image/jpeg', 0.8);
+                localStorage.setItem('stormy_profile_pic', resized);
+                replaceUserAvatars();
+            };
+            imgEl.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    setInterval(function() {
+        addPlusButtons();
+        replaceUserAvatars();
+    }, 1000);
+})();
+</script>
+""", unsafe_allow_html=True)
+
 
 
 @st.cache_resource
@@ -275,4 +312,5 @@ if prompt := st.chat_input("Réponds ici..."):
 
         st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
+
 
