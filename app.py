@@ -6,7 +6,7 @@ from scipy.sparse import load_npz
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# --- 1. CONFIGURATION ET STYLE CSS ---
+# --- 1. CONFIGURATION ET STYLE CSS (Strictement identique) ---
 st.set_page_config(page_title="Stormy AI", page_icon="⚡", layout="centered")
 
 st.markdown("""
@@ -30,7 +30,7 @@ USER_ICON = os.path.join(dossier_actuel, "user_icon.png")
 AI_AVATAR = AI_ICON if os.path.exists(AI_ICON) else "🤖"
 USER_AVATAR = USER_ICON if os.path.exists(USER_ICON) else "👤"
 
-# --- 3. CHARGEMENT DES RESSOURCES ---
+# --- 3. CHARGEMENT DES RESSOURCES (Synchronisation et RAM) ---
 @st.cache_resource
 def load_resources():
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
@@ -109,18 +109,19 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
-            # Priorisation des titres plus courts pour éviter de matcher les "Companions" en premier
+            # FIX CRITIQUE : On trie par longueur de titre pour éviter "WE LOVE HARRY POTTER!"
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
             if auth_in:
                 m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
-            
+
             if not m.empty:
+                # On prend le titre le plus court (souvent le livre original)
                 m['len'] = m['Book-Title'].str.len()
                 target_row = m.sort_values('len').iloc[0]
                 idx_pos = target_row.name 
                 
-                # Scan ultra-profond (2000 voisins) pour ne rien rater
-                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(2000, len(df)))
+                # Scan plus profond pour le filtrage d'auteur
+                dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
                 response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
@@ -128,7 +129,7 @@ if prompt := st.chat_input("Réponds ici..."):
                 t_title = str(target_row['Book-Title']).lower()
                 t_auth = str(target_row['Book-Author'])
                 def clean_auth(name): return "".join(filter(str.isalpha, str(name).lower()))
-                t_auth_clean = clean_auth(t_auth)
+                t_auth_c = clean_auth(t_auth)
                 t_kw = [w for w in t_title.replace("(", "").replace(")", "").split() if len(w) > 3]
 
                 seen_titles = [t_title[:20]]
@@ -138,24 +139,24 @@ if prompt := st.chat_input("Réponds ici..."):
                     if found >= count: break
                     res = df.iloc[ind[0][i]]
                     res_title = str(res['Book-Title']).lower()
-                    res_auth_clean = clean_auth(str(res['Book-Author']))
+                    res_auth_c = clean_auth(str(res['Book-Author']))
                     
                     if res_title[:20] in seen_titles: continue
 
                     if div:
-                        # Si OUI : on exclut l'auteur original
-                        if res_auth_clean in t_auth_clean or t_auth_clean in res_auth_clean: continue
+                        # DIVERSIFIER : On dégage le même auteur
+                        if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        # Si NON : on n'accepte QUE le même auteur au début
-                        if res_auth_clean not in t_auth_clean and t_auth_clean not in res_auth_clean:
-                            # Si on a déjà scanné beaucoup de livres et qu'on n'a rien, on laisse le KNN
-                            # proposer les plus proches sémantiquement pour ne pas finir vide
-                            if i < 500: continue 
+                        # NE PAS DIVERSIFIER : On ne garde QUE le même auteur
+                        if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(res_title[:20])
+                
+                if found == 0:
+                    response += "(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)"
                 
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
