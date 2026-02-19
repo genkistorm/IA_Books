@@ -86,6 +86,7 @@ if prompt := st.chat_input("Réponds ici..."):
     with st.chat_message("assistant", avatar="stormy_icon.png"):
         if st.session_state.step == "ASK_TITLE":
             st.session_state.temp_data["title"] = prompt
+            prompt_titre = prompt
             response = f"D'accord, **{prompt}** j'en prends note. Connais-tu son auteur ? (Sinon, réponds 'non' ou laisse un espace vide)"
             st.session_state.step = "ASK_AUTHOR"
             
@@ -125,7 +126,7 @@ if prompt := st.chat_input("Réponds ici..."):
                 idx_pos = target_row.name 
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
-                response = f"Analyse pour : {prompt}\n\n"
+                response = f"Analyse pour : {prompt_titre}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
                 
                 t_title = str(target_row['Book-Title']).lower()
@@ -161,7 +162,7 @@ if prompt := st.chat_input("Réponds ici..."):
         elif st.session_state.step == "ASK_SUMMARY":
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
-            nouveau_feat = f"Fantasy | {user_title} | {prompt}"
+            nouveau_feat = f"{user_title} | {prompt}"
             nouveau_emb = st_model.encode([nouveau_feat])
             scores = cosine_similarity(nouveau_emb, embs)[0]
             top_indices = np.argsort(scores)[::-1]
