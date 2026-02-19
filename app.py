@@ -109,18 +109,21 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
-            # FIX DE PERTINENCE : On trie par longueur de titre pour éviter "WE LOVE HARRY POTTER!"
+            # RECHERCHE AVANCÉE : On cherche le titre
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
-            if auth_in:
-                m = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
-
+            
             if not m.empty:
-                # Priorité au titre le plus court (souvent l'oeuvre originale)
+                # Si l'utilisateur a donné un auteur, on essaie de filtrer dessus d'abord
+                if auth_in and len(auth_in) > 1:
+                    m_auth = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
+                    if not m_auth.empty: m = m_auth
+
+                # On prend le livre le plus court mais on évite les "WE LOVE..." si possible
                 m['len'] = m['Book-Title'].str.len()
                 target_row = m.sort_values('len').iloc[0]
                 idx_pos = target_row.name 
                 
-                # Scan très large (1000 voisins) pour débusquer Rowling
+                # Scan très large
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
                 response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
@@ -130,6 +133,8 @@ if prompt := st.chat_input("Réponds ici..."):
                 t_auth = str(target_row['Book-Author'])
                 def clean_auth(name): return "".join(filter(str.isalpha, str(name).lower()))
                 t_auth_c = clean_auth(t_auth)
+                
+                # Mots clés du titre (ex: Harry, Potter)
                 t_kw = [w for w in t_title.replace("(", "").replace(")", "").split() if len(w) > 3]
 
                 seen_titles = [t_title[:20]]
@@ -142,21 +147,23 @@ if prompt := st.chat_input("Réponds ici..."):
                     
                     if res_title[:20] in seen_titles: continue
 
-                    # --- LOGIQUE DE FILTRAGE RIGOUREUSE ---
                     if div:
-                        # On exclut le même auteur
+                        # DIVERSIFIER : Exclure même auteur ET titres trop proches
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        # On n'accepte QUE le même auteur (Verrou strict)
-                        if res_auth_c not in t_auth_c and t_auth_c not in res_auth_c: continue
+                        # PAS DIVERSIFIER : On veut le même auteur OU le même univers (titre similaire)
+                        is_same_author = res_auth_c in t_auth_c or t_auth_c in res_auth_c
+                        is_same_universe = any(k in res_title for k in t_kw)
+                        
+                        if not (is_same_author or is_same_universe): continue
 
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(res_title[:20])
                 
                 if found == 0:
-                    response += "(Je n'ai pas trouvé d'autres livres de cet auteur dans mes voisins proches. Essaye de diversifier !)"
+                    response += "(Je n'ai pas trouvé assez de résultats. Essaye de diversifier ta recherche !)"
                 
                 response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
                 st.session_state.step = "ASK_TITLE"
