@@ -26,14 +26,13 @@ st.markdown('<div class="stormy-container"><div class="stormy-text">Stormy</div>
 # --- 2. CHEMIN DU RÉPERTOIRE ---
 dossier_actuel = os.path.dirname(os.path.abspath(__file__))
 
-# --- 3. CHARGEMENT DES RESSOURCES (SYNCHRONISATION ET RAM) ---
+# --- 3. CHARGEMENT DES RESSOURCES ---
 @st.cache_resource
 def load_resources():
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
     df = pd.read_csv(os.path.join(dossier_actuel, "data_checkpoint.csv"), encoding='utf-8-sig')
     df = df.reset_index(drop=True)
     
-    import io
     def glue_to_disk(prefix, count, extension):
         temp_path = os.path.join(dossier_actuel, f"temp_{prefix}.{extension}")
         with open(temp_path, 'wb') as f_out:
@@ -68,7 +67,6 @@ if "temp_data" not in st.session_state:
     st.session_state.temp_data = {"title": "", "author": "", "count": 8, "diversify": False}
 
 for message in st.session_state.messages:
-    # Utilisation directe des fichiers images
     avatar = "stormy_icon.png" if message["role"] == "assistant" else "user_icon.png"
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
@@ -91,13 +89,17 @@ if prompt := st.chat_input("Réponds ici..."):
             st.session_state.step = "ASK_COUNT"
 
         elif st.session_state.step == "ASK_COUNT":
-            try:
-                count = int(''.join(filter(str.isdigit, prompt)))
-                count = max(1, min(10, count))
-            except: count = 8
-            st.session_state.temp_data["count"] = count
-            response = "Veux-tu **diversifier** les propositions ?"
-            st.session_state.step = "ASK_DIVERSITY"
+            digits = ''.join(filter(str.isdigit, prompt))
+            if digits:
+                count = int(digits)
+                if 1 <= count <= 10:
+                    st.session_state.temp_data["count"] = count
+                    response = "Veux-tu **diversifier** les propositions ?"
+                    st.session_state.step = "ASK_DIVERSITY"
+                else:
+                    response = "Désolé, je ne peux recommander qu'entre **1 et 10 livres**. Peux-tu me donner un chiffre valide ?"
+            else:
+                response = "Oups ! Je n'ai pas vu de chiffre. Peux-tu me donner un chiffre entre **1 et 10** ?"
 
         elif st.session_state.step == "ASK_DIVERSITY":
             st.session_state.temp_data["diversify"] = prompt.lower() in ['o', 'oui', 'ouais']
@@ -107,7 +109,6 @@ if prompt := st.chat_input("Réponds ici..."):
             div = st.session_state.temp_data["diversify"]
 
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
-            
             if not m.empty:
                 if auth_in and len(auth_in) > 1:
                     m_auth = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
@@ -116,7 +117,6 @@ if prompt := st.chat_input("Réponds ici..."):
                 m['len'] = m['Book-Title'].str.len()
                 target_row = m.sort_values('len').iloc[0]
                 idx_pos = target_row.name 
-                
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
                 response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
@@ -135,41 +135,33 @@ if prompt := st.chat_input("Réponds ici..."):
                     res = df.iloc[ind[0][i]]
                     res_title = str(res['Book-Title']).lower()
                     res_auth_c = clean_auth(str(res['Book-Author']))
-                    
                     if res_title[:20] in seen_titles: continue
-
                     if div:
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        is_same_author = res_auth_c in t_auth_c or t_auth_c in res_auth_c
-                        is_same_universe = any(k in res_title for k in t_kw)
-                        if not (is_same_author or is_same_universe): continue
-
+                        if not (res_auth_c in t_auth_c or t_auth_c in res_auth_c or any(k in res_title for k in t_kw)): continue
                     found += 1
                     response += f"{found}. **{res['Book-Title']}** ({res['Book-Author']})\n"
                     seen_titles.append(res_title[:20])
                 
-                if found == 0:
-                    response += "(Je n'ai pas trouvé assez de résultats. Essaye de diversifier ta recherche !)"
-                
-                response += "\n\nDonne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
+                if found == 0: response += "(Pas assez de résultats trouvés. Essaye de diversifier !)"
+                response += "\n\nDonne-moi un nouveau titre !"
                 st.session_state.step = "ASK_TITLE"
             else:
-                response = f"Je n'ai pas trouvé '{title_in}'. Peux-tu m'en dire un peu plus en me citant plusieurs mots-clés ?"
+                response = f"Je n'ai pas trouvé '{title_in}'. Peux-tu m'en dire plus avec des mots-clés ?"
                 st.session_state.step = "ASK_SUMMARY"
 
         elif st.session_state.step == "ASK_SUMMARY":
             user_title = st.session_state.temp_data["title"]
             count = st.session_state.temp_data["count"]
-            nouveau_feat = f"Fantasy Fantasy | {user_title} | {prompt}"
+            nouveau_feat = f"Fantasy | {user_title} | {prompt}"
             nouveau_emb = st_model.encode([nouveau_feat])
             scores = cosine_similarity(nouveau_emb, embs)[0]
             top_indices = np.argsort(scores)[::-1]
             
-            response = f"Analyse pour : {user_title.upper()} \n\n"
-            seen = [user_title.lower()[:20]]
-            found = 0
+            response = f"Analyse pour : {user_title.upper()}\n\n"
+            seen, found = [user_title.lower()[:20]], 0
             for idx in top_indices:
                 if found >= count: break
                 info = df.iloc[idx]
@@ -177,8 +169,7 @@ if prompt := st.chat_input("Réponds ici..."):
                     found += 1
                     response += f"{found}. **{info['Book-Title']}** ({info['Book-Author']})\n"
                     seen.append(str(info['Book-Title']).lower()[:20])
-            
-            response += "\n\nOn continue ? Donne-moi un nouveau titre si t'as envie de découvrir d'autres ouvrages !"
+            response += "\n\nDonne-moi un nouveau titre !"
             st.session_state.step = "ASK_TITLE"
 
         st.markdown(response)
