@@ -49,8 +49,13 @@ def load_resources():
 
     def fix_encoding(text):
         if not isinstance(text, str): return str(text)
-        try: return text.encode('cp1252').decode('utf-8')
-        except: return text
+        try:
+            return text.encode('cp1252').decode('utf-8').encode('cp1252').decode('utf-8')
+        except:
+            try:
+                return text.encode('cp1252').decode('utf-8')
+            except:
+                return text
     df['Book-Title'] = df['Book-Title'].apply(fix_encoding)
     df['Book-Author'] = df['Book-Author'].apply(fix_encoding)
 
@@ -120,7 +125,7 @@ if prompt := st.chat_input("Réponds ici..."):
                 idx_pos = target_row.name 
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
-                response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
+                response = f"Analyse pour : {prompt}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
                 
                 t_title = str(target_row['Book-Title']).lower()
