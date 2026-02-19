@@ -23,12 +23,8 @@ st.markdown("""
 
 st.markdown('<div class="stormy-container"><div class="stormy-text">Stormy</div></div>', unsafe_allow_html=True)
 
-# --- 2. GESTION DES AVATARS ---
+# --- 2. CHEMIN DU RÉPERTOIRE ---
 dossier_actuel = os.path.dirname(os.path.abspath(__file__))
-AI_ICON = os.path.join(dossier_actuel, "stormy_icon.png")
-USER_ICON = os.path.join(dossier_actuel, "user_icon.png")
-AI_AVATAR = AI_ICON if os.path.exists(AI_ICON) else "🤖"
-USER_AVATAR = USER_ICON if os.path.exists(USER_ICON) else "👤"
 
 # --- 3. CHARGEMENT DES RESSOURCES (SYNCHRONISATION ET RAM) ---
 @st.cache_resource
@@ -72,17 +68,18 @@ if "temp_data" not in st.session_state:
     st.session_state.temp_data = {"title": "", "author": "", "count": 8, "diversify": False}
 
 for message in st.session_state.messages:
-    avatar = AI_AVATAR if message["role"] == "assistant" else USER_AVATAR
+    # Utilisation directe des fichiers images
+    avatar = "stormy_icon.png" if message["role"] == "assistant" else "user_icon.png"
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
 # --- 5. LOGIQUE CONVERSATIONNELLE ---
 if prompt := st.chat_input("Réponds ici..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar=USER_AVATAR):
+    with st.chat_message("user", avatar="user_icon.png"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant", avatar=AI_AVATAR):
+    with st.chat_message("assistant", avatar="stormy_icon.png"):
         if st.session_state.step == "ASK_TITLE":
             st.session_state.temp_data["title"] = prompt
             response = f"D'accord, **{prompt}** j'en prends note. Connais-tu son auteur ? (Sinon, réponds 'non' ou laisse un espace vide)"
@@ -109,21 +106,17 @@ if prompt := st.chat_input("Réponds ici..."):
             count = st.session_state.temp_data["count"]
             div = st.session_state.temp_data["diversify"]
 
-            # RECHERCHE AVANCÉE : On cherche le titre
             m = df[df['Book-Title'].str.contains(title_in, case=False, na=False)].copy()
             
             if not m.empty:
-                # Si l'utilisateur a donné un auteur, on essaie de filtrer dessus d'abord
                 if auth_in and len(auth_in) > 1:
                     m_auth = m[m['Book-Author'].str.contains(auth_in, case=False, na=False)]
                     if not m_auth.empty: m = m_auth
 
-                # On prend le livre le plus court mais on évite les "WE LOVE..." si possible
                 m['len'] = m['Book-Title'].str.len()
                 target_row = m.sort_values('len').iloc[0]
                 idx_pos = target_row.name 
                 
-                # Scan très large
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
                 response = f"Analyse pour : {target_row['Book-Title'].upper()}\n\n"
@@ -133,8 +126,6 @@ if prompt := st.chat_input("Réponds ici..."):
                 t_auth = str(target_row['Book-Author'])
                 def clean_auth(name): return "".join(filter(str.isalpha, str(name).lower()))
                 t_auth_c = clean_auth(t_auth)
-                
-                # Mots clés du titre (ex: Harry, Potter)
                 t_kw = [w for w in t_title.replace("(", "").replace(")", "").split() if len(w) > 3]
 
                 seen_titles = [t_title[:20]]
@@ -148,14 +139,11 @@ if prompt := st.chat_input("Réponds ici..."):
                     if res_title[:20] in seen_titles: continue
 
                     if div:
-                        # DIVERSIFIER : Exclure même auteur ET titres trop proches
                         if res_auth_c in t_auth_c or t_auth_c in res_auth_c: continue
                         if any(k in res_title for k in t_kw): continue
                     else:
-                        # PAS DIVERSIFIER : On veut le même auteur OU le même univers (titre similaire)
                         is_same_author = res_auth_c in t_auth_c or t_auth_c in res_auth_c
                         is_same_universe = any(k in res_title for k in t_kw)
-                        
                         if not (is_same_author or is_same_universe): continue
 
                     found += 1
