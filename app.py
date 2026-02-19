@@ -30,7 +30,6 @@ dossier_actuel = os.path.dirname(os.path.abspath(__file__))
 # --- 3. CHARGEMENT DES RESSOURCES ---
 @st.cache_resource
 def load_resources():
-    prompt_titre = ""
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
     df = pd.read_csv(os.path.join(dossier_actuel, "data_checkpoint.csv"), encoding='utf-8-sig')
     df = df.reset_index(drop=True)
@@ -87,7 +86,6 @@ if prompt := st.chat_input("Réponds ici..."):
     with st.chat_message("assistant", avatar="stormy_icon.png"):
         if st.session_state.step == "ASK_TITLE":
             st.session_state.temp_data["title"] = prompt
-            prompt_titre = prompt
             response = f"D'accord, **{prompt}** j'en prends note. Connais-tu son auteur ? (Sinon, réponds 'non' ou laisse un espace vide)"
             st.session_state.step = "ASK_AUTHOR"
             
@@ -127,7 +125,7 @@ if prompt := st.chat_input("Réponds ici..."):
                 idx_pos = target_row.name 
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
-                response = f"Analyse pour : {prompt_titre}\n\n"
+                response = f"Analyse pour : {target_row['Book-Title']}\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
                 
                 t_title = str(target_row['Book-Title']).lower()
