@@ -125,7 +125,7 @@ if prompt := st.chat_input("Réponds ici..."):
                 idx_pos = target_row.name 
                 dist, ind = knn.kneighbors(h_mat.getrow(idx_pos), n_neighbors=min(1000, len(df)))
                 
-                response = f"Analyse pour : {target_row['Book-Title']}\n\n"
+                response = f"Analyse pour : **{title_in}**\n\n"
                 response += f"Voici {count} ouvrages qui devraient te plaire :\n\n"
                 
                 t_title = str(target_row['Book-Title']).lower()
