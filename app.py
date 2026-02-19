@@ -30,6 +30,7 @@ dossier_actuel = os.path.dirname(os.path.abspath(__file__))
 # --- 3. CHARGEMENT DES RESSOURCES ---
 @st.cache_resource
 def load_resources():
+    prompt_titre = ""
     st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
     df = pd.read_csv(os.path.join(dossier_actuel, "data_checkpoint.csv"), encoding='utf-8-sig')
     df = df.reset_index(drop=True)
