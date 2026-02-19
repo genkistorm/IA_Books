@@ -19,27 +19,6 @@ st.markdown("""
     .stormy-container { display: flex; justify-content: center; align-items: center; height: 100px; margin-top: -30px; margin-bottom: 20px; }
     .stormy-text { font-family: 'Inter', sans-serif; font-size: 64px; font-weight: 800; background: linear-gradient(90deg, #4F8BF9 0%, #BC67FB 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: logo-pulse 3s infinite ease-in-out; }
 
-    /* --- LA FEUILLE BLEUTÉE (Card) --- */
-    .main .block-container {
-        background-color: #F0F7FF; /* Bleu très pâle */
-        border-radius: 30px;       /* Bords arrondis */
-        padding: 10px;             /* Espace intérieur */
-        margin-top: 40px;          /* Espace en haut */
-        margin-bottom: 40px;       /* Espace en bas */
-        box-shadow: 0 10px 30px rgba(79, 139, 249, 0.1); /* Ombre douce bleutée */
-        border: 1px solid rgba(79, 139, 249, 0.2);      /* Bordure légère */
-    }
-
-    /* Ajustement pour que le fond de la page reste neutre */
-    .stApp {
-        background-color: #FFFFFF;
-    }
-    
-    /* On force les messages à être transparents pour voir la feuille derrière */
-    .stChatMessage {
-        background-color: rgba(255, 255, 255, 0.4) !important;
-        border-radius: 15px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
