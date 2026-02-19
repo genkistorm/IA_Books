@@ -23,7 +23,7 @@ st.markdown("""
     .main .block-container {
         background-color: #F0F7FF; /* Bleu très pâle */
         border-radius: 30px;       /* Bords arrondis */
-        padding: 50px;             /* Espace intérieur */
+        padding: 10px;             /* Espace intérieur */
         margin-top: 40px;          /* Espace en haut */
         margin-bottom: 40px;       /* Espace en bas */
         box-shadow: 0 10px 30px rgba(79, 139, 249, 0.1); /* Ombre douce bleutée */
