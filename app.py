@@ -179,7 +179,7 @@ if prompt := st.chat_input("Réponds ici..."):
             scores = cosine_similarity(nouveau_emb, embs)[0]
             top_indices = np.argsort(scores)[::-1]
             
-            response = f"Analyse pour : {user_title.upper()} ---\n\n"
+            response = f"Analyse pour : {user_title.upper()} \n\n"
             seen = [user_title.lower()[:20]]
             found = 0
             for idx in top_indices:
