@@ -99,7 +99,7 @@ if prompt := st.chat_input("Réponds ici..."):
                 count = max(1, min(10, count))
             except: count = 8
             st.session_state.temp_data["count"] = count
-            response = "Veux-tu **diversifier** les auteurs ?"
+            response = "Veux-tu **diversifier** les propositions ?"
             st.session_state.step = "ASK_DIVERSITY"
 
         elif st.session_state.step == "ASK_DIVERSITY":
